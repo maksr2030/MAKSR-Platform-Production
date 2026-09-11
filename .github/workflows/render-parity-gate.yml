@@ -1,0 +1,208 @@
+name: MAKSR render parity gate
+
+on:
+  push:
+    branches:
+      - source-recovery
+    paths:
+      - '.github/workflows/render-parity-gate.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout recovery branch
+        uses: actions/checkout@v4
+        with:
+          ref: source-recovery
+
+      - name: Confirm live HTML still matches recovered source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovery/render-parity
+          curl --fail --location --retry 3 --retry-delay 2 \
+            --user-agent 'Mozilla/5.0 MAKSR-Parity/1.0' \
+            https://maksr.com/ \
+            --output recovery/render-parity/live.html
+          LIVE_SHA=$(sha256sum recovery/render-parity/live.html | awk '{print $1}')
+          LOCAL_SHA=$(sha256sum index.html | awk '{print $1}')
+          echo "LIVE_SHA=$LIVE_SHA" >> "$GITHUB_ENV"
+          echo "LOCAL_SHA=$LOCAL_SHA" >> "$GITHUB_ENV"
+          test "$LIVE_SHA" = "$LOCAL_SHA"
+
+      - name: Start recovered source locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 4173 --bind 127.0.0.1 > /tmp/maksr-http.log 2>&1 &
+          echo $! > /tmp/maksr-http.pid
+          for i in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:4173/ >/dev/null; then
+              exit 0
+            fi
+            sleep 0.5
+          done
+          cat /tmp/maksr-http.log
+          exit 1
+
+      - name: Install Playwright Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --package-lock=false playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Run desktop and mobile bilingual render parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/maksr-parity.mjs <<'NODE'
+          import { chromium } from 'playwright';
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+
+          const out = 'recovery/render-parity';
+          const targets = {
+            live: 'https://maksr.com/',
+            local: 'http://127.0.0.1:4173/'
+          };
+          const viewports = {
+            desktop: { width: 1440, height: 1100 },
+            mobile: { width: 390, height: 844 }
+          };
+
+          function sha(path) {
+            return crypto.createHash('sha256').update(fs.readFileSync(path)).digest('hex');
+          }
+
+          const browser = await chromium.launch({ headless: true });
+          const observations = {};
+
+          for (const [viewportName, viewport] of Object.entries(viewports)) {
+            observations[viewportName] = {};
+            for (const [targetName, url] of Object.entries(targets)) {
+              const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
+              const page = await context.newPage();
+              const errors = [];
+              page.on('console', msg => { if (msg.type() === 'error') errors.push(msg.text()); });
+              page.on('pageerror', err => errors.push(String(err)));
+
+              await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
+              await page.evaluate(() => window.scrollTo(0, 0));
+              await page.waitForTimeout(300);
+
+              const en = await page.evaluate(() => ({
+                dir: document.documentElement.dir,
+                lang: document.documentElement.lang,
+                h1: document.querySelector('h1')?.textContent?.trim() || '',
+                langButton: document.querySelector('#lang')?.textContent?.trim() || ''
+              }));
+
+              const enPath = `${out}/${targetName}-${viewportName}-en.png`;
+              await page.screenshot({ path: enPath, fullPage: true });
+
+              await page.locator('#lang').click();
+              await page.waitForTimeout(300);
+              await page.evaluate(() => window.scrollTo(0, 0));
+
+              const ar = await page.evaluate(() => ({
+                dir: document.documentElement.dir,
+                lang: document.documentElement.lang,
+                h1: document.querySelector('h1')?.textContent?.trim() || '',
+                langButton: document.querySelector('#lang')?.textContent?.trim() || ''
+              }));
+
+              const arPath = `${out}/${targetName}-${viewportName}-ar.png`;
+              await page.screenshot({ path: arPath, fullPage: true });
+
+              observations[viewportName][targetName] = {
+                en, ar, errors,
+                enSha256: sha(enPath),
+                arSha256: sha(arPath)
+              };
+              await context.close();
+            }
+          }
+
+          await browser.close();
+
+          const checks = {
+            desktopEnglishPixels: observations.desktop.live.enSha256 === observations.desktop.local.enSha256,
+            desktopArabicPixels: observations.desktop.live.arSha256 === observations.desktop.local.arSha256,
+            mobileEnglishPixels: observations.mobile.live.enSha256 === observations.mobile.local.enSha256,
+            mobileArabicPixels: observations.mobile.live.arSha256 === observations.mobile.local.arSha256,
+            localEnglishHero: observations.desktop.local.en.h1 === 'Build. Invest. Partner. Acquire.',
+            liveEnglishHero: observations.desktop.live.en.h1 === 'Build. Invest. Partner. Acquire.',
+            localArabicRTL: observations.desktop.local.ar.dir === 'rtl',
+            liveArabicRTL: observations.desktop.live.ar.dir === 'rtl',
+            localArabicHeroPresent: observations.desktop.local.ar.h1.length > 0 && observations.desktop.local.ar.h1 !== observations.desktop.local.en.h1,
+            liveArabicHeroPresent: observations.desktop.live.ar.h1.length > 0 && observations.desktop.live.ar.h1 !== observations.desktop.live.en.h1,
+            localConsoleClean: Object.values(observations).every(v => v.local.errors.length === 0),
+            liveConsoleClean: Object.values(observations).every(v => v.live.errors.length === 0)
+          };
+
+          fs.writeFileSync(`${out}/observations.json`, JSON.stringify({ observations, checks }, null, 2));
+
+          const yesNo = v => v ? 'YES' : 'NO';
+          const report = `# MAKSR Render Parity Gate\n\n` +
+            `- Live URL: https://maksr.com/\n` +
+            `- Recovered source: source-recovery/index.html\n` +
+            `- Live HTML SHA-256: ${process.env.LIVE_SHA}\n` +
+            `- Local HTML SHA-256: ${process.env.LOCAL_SHA}\n` +
+            `- HTML byte-for-byte match: ${yesNo(process.env.LIVE_SHA === process.env.LOCAL_SHA)}\n\n` +
+            `## Browser parity\n\n` +
+            `- Desktop English pixel match: ${yesNo(checks.desktopEnglishPixels)}\n` +
+            `- Desktop Arabic pixel match: ${yesNo(checks.desktopArabicPixels)}\n` +
+            `- Mobile English pixel match: ${yesNo(checks.mobileEnglishPixels)}\n` +
+            `- Mobile Arabic pixel match: ${yesNo(checks.mobileArabicPixels)}\n` +
+            `- Live English hero verified: ${yesNo(checks.liveEnglishHero)}\n` +
+            `- Local English hero verified: ${yesNo(checks.localEnglishHero)}\n` +
+            `- Live Arabic RTL verified: ${yesNo(checks.liveArabicRTL)}\n` +
+            `- Local Arabic RTL verified: ${yesNo(checks.localArabicRTL)}\n` +
+            `- Live Arabic hero switch verified: ${yesNo(checks.liveArabicHeroPresent)}\n` +
+            `- Local Arabic hero switch verified: ${yesNo(checks.localArabicHeroPresent)}\n` +
+            `- Live console/page errors absent: ${yesNo(checks.liveConsoleClean)}\n` +
+            `- Local console/page errors absent: ${yesNo(checks.localConsoleClean)}\n\n` +
+            `## Gate\n\n` +
+            `This gate is read-only against production. It does not deploy, promote, alias, or modify DNS.\n`;
+          fs.writeFileSync(`${out}/PARITY_REPORT.md`, report);
+
+          const required = [
+            checks.desktopEnglishPixels,
+            checks.desktopArabicPixels,
+            checks.mobileEnglishPixels,
+            checks.mobileArabicPixels,
+            checks.localEnglishHero,
+            checks.liveEnglishHero,
+            checks.localArabicRTL,
+            checks.liveArabicRTL,
+            checks.localArabicHeroPresent,
+            checks.liveArabicHeroPresent
+          ];
+          if (!required.every(Boolean)) process.exit(2);
+          NODE
+          node /tmp/maksr-parity.mjs
+
+      - name: Create screenshot SHA-256 manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum recovery/render-parity/*.png recovery/render-parity/live.html > recovery/render-parity/PARITY_SHA256.txt
+
+      - name: Commit parity evidence to recovery branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add recovery/render-parity
+          if git diff --cached --quiet; then
+            echo 'No parity evidence changes to commit.'
+          else
+            git commit -m 'Record MAKSR browser render parity evidence'
+            git push origin source-recovery
+          fi
