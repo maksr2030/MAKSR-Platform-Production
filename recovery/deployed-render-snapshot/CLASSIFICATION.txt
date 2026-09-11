@@ -1,0 +1,3 @@
+canonical-apex.html=MAKSR_MATCH
+canonical-www.html=MAKSR_MATCH
+deployment-direct.html=VERCEL_OR_AUTH_PAGE
