@@ -1,3 +1,4 @@
 Preview gate trigger.
 This file exists only to trigger the guarded Preview-only workflow.
 No Production deployment flag is used by that workflow.
+Retry reason: discover the Vercel project visible to the token, link explicitly to maksr-mvp, then deploy Preview only.
