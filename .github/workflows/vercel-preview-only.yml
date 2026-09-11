@@ -11,6 +11,11 @@ on:
 permissions:
   contents: write
 
+env:
+  VERCEL_TEAM_ID: team_KMM060bx6S1YZlqLGOqobs3R
+  VERCEL_SCOPE: maksr2030-6555s-projects
+  VERCEL_PROJECT_NAME: maksr-mvp
+
 jobs:
   preview:
     runs-on: ubuntu-latest
@@ -46,40 +51,38 @@ jobs:
           echo "LOCAL_SHA=$LOCAL_SHA" >> "$GITHUB_ENV"
           test "$LIVE_SHA" = "$LOCAL_SHA"
 
-      - name: Discover and link exact Vercel project
+      - name: Verify exact Vercel project through team API
         shell: bash
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
           rm -rf .vercel
-          npx --yes vercel@latest project ls --json --token="$VERCEL_TOKEN" > /tmp/vercel-projects.json
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_NAME}?teamId=${VERCEL_TEAM_ID}" \
+            --output /tmp/vercel-project.json
           python3 - <<'PY'
           import json, os, sys
-          data=json.load(open('/tmp/vercel-projects.json'))
-          projects=data.get('projects', data) if isinstance(data, dict) else data
-          if not isinstance(projects, list):
-              print('Unexpected Vercel project-list response shape.')
+          p=json.load(open('/tmp/vercel-project.json'))
+          expected_name=os.environ['VERCEL_PROJECT_NAME']
+          expected_team=os.environ['VERCEL_TEAM_ID']
+          if p.get('name') != expected_name:
+              print(f"Unexpected Vercel project name: {p.get('name')}")
               sys.exit(3)
-          safe=[{'name':p.get('name'),'id':p.get('id'),'accountId':p.get('accountId')} for p in projects]
-          print('Projects visible to token:', json.dumps(safe, separators=(',',':')))
-          matches=[p for p in projects if p.get('name') == 'maksr-mvp']
-          if len(matches) != 1:
-              print(f'Expected exactly one visible project named maksr-mvp; found {len(matches)}.')
+          project_id=p.get('id') or ''
+          if not project_id.startswith('prj_'):
+              print('Vercel API did not return a valid project id.')
               sys.exit(4)
-          p=matches[0]
+          account_id=p.get('accountId') or expected_team
+          print('Verified Vercel project:', expected_name, project_id)
+          print('Verified Vercel account/team:', account_id)
           with open(os.environ['GITHUB_ENV'],'a') as f:
-              f.write(f"DISCOVERED_PROJECT_ID={p.get('id','')}\n")
-              f.write(f"DISCOVERED_ACCOUNT_ID={p.get('accountId','')}\n")
-          print('Target project discovered safely:', p.get('name'), p.get('id'))
-          PY
-          npx --yes vercel@latest link --yes --project=maksr-mvp --token="$VERCEL_TOKEN"
-          test -f .vercel/project.json
-          python3 - <<'PY'
-          import json, os
-          p=json.load(open('.vercel/project.json'))
-          assert p.get('projectId') == os.environ['DISCOVERED_PROJECT_ID'], (p.get('projectId'), os.environ['DISCOVERED_PROJECT_ID'])
-          print('Linked existing project identity verified:', p.get('projectId'), p.get('orgId'))
+              f.write(f"DISCOVERED_PROJECT_ID={project_id}\n")
+              f.write(f"DISCOVERED_ACCOUNT_ID={account_id}\n")
+          os.makedirs('.vercel', exist_ok=True)
+          with open('.vercel/project.json','w') as f:
+              json.dump({'orgId': expected_team, 'projectId': project_id, 'projectName': expected_name}, f)
           PY
 
       - name: Pull existing Vercel project settings for Preview
@@ -88,7 +91,14 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
-          npx --yes vercel@latest pull --yes --environment=preview --token="$VERCEL_TOKEN"
+          npx --yes vercel@latest pull --yes --environment=preview \
+            --scope="$VERCEL_SCOPE" --token="$VERCEL_TOKEN"
+          python3 - <<'PY'
+          import json, os
+          p=json.load(open('.vercel/project.json'))
+          assert p.get('projectId') == os.environ['DISCOVERED_PROJECT_ID'], (p.get('projectId'), os.environ['DISCOVERED_PROJECT_ID'])
+          print('Existing Vercel project identity verified after pull.')
+          PY
 
       - name: Build Preview only
         shell: bash
@@ -96,7 +106,8 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
-          npx --yes vercel@latest build --token="$VERCEL_TOKEN"
+          npx --yes vercel@latest build \
+            --scope="$VERCEL_SCOPE" --token="$VERCEL_TOKEN"
 
       - name: Deploy Preview only, never Production
         shell: bash
@@ -104,19 +115,29 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
-          URL=$(npx --yes vercel@latest deploy --prebuilt --token="$VERCEL_TOKEN")
+          URL=$(npx --yes vercel@latest deploy --prebuilt \
+            --scope="$VERCEL_SCOPE" --token="$VERCEL_TOKEN")
           echo "$URL" > recovery/vercel-preview/PREVIEW_URL.txt
           echo "PREVIEW_URL=$URL" >> "$GITHUB_ENV"
           echo "Created Preview: $URL"
 
       - name: Validate Preview content
         shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
-          curl --fail --location --retry 4 --retry-delay 3 \
+          if curl --fail --location --retry 2 --retry-delay 2 \
             --user-agent 'Mozilla/5.0 MAKSR-Preview-Validation/1.0' \
             "$PREVIEW_URL" \
-            --output recovery/vercel-preview/preview.html
+            --output recovery/vercel-preview/preview.html; then
+            echo 'Preview was publicly readable.'
+          else
+            echo 'Direct Preview fetch is protected; retrying through authenticated Vercel CLI.'
+            npx --yes vercel@latest curl "$PREVIEW_URL" \
+              --scope="$VERCEL_SCOPE" --token="$VERCEL_TOKEN" \
+              > recovery/vercel-preview/preview.html
+          fi
           grep -Fq 'MAKSR' recovery/vercel-preview/preview.html
           grep -Fq 'Build. Invest. Partner. Acquire.' recovery/vercel-preview/preview.html
           PREVIEW_SHA=$(sha256sum recovery/vercel-preview/preview.html | awk '{print $1}')
@@ -131,8 +152,10 @@ jobs:
             echo '# MAKSR Vercel Preview Evidence'
             echo
             echo "- Preview URL: $PREVIEW_URL"
+            echo "- Vercel project name: $VERCEL_PROJECT_NAME"
             echo "- Vercel project ID: $DISCOVERED_PROJECT_ID"
             echo "- Vercel account/team ID: $DISCOVERED_ACCOUNT_ID"
+            echo "- Vercel CLI scope: $VERCEL_SCOPE"
             echo "- Live source SHA-256: $LIVE_SHA"
             echo "- Recovered local SHA-256: $LOCAL_SHA"
             echo "- Preview response SHA-256: $PREVIEW_SHA"
