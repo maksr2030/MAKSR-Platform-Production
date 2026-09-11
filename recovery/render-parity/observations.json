@@ -1,0 +1,90 @@
+{
+  "observations": {
+    "desktop": {
+      "live": {
+        "en": {
+          "dir": "ltr",
+          "lang": "en",
+          "h1": "Build. Invest. Partner. Acquire.",
+          "langButton": "العربية"
+        },
+        "ar": {
+          "dir": "rtl",
+          "lang": "ar",
+          "h1": "ابنِ. استثمر. شارك. استحوذ.",
+          "langButton": "English"
+        },
+        "errors": [],
+        "enSha256": "9f297a18f52b44664bf29050f6f3a535150da336f0404d7e21c2910c5cba0f72",
+        "arSha256": "4ccfe5fdbf46e4698f2e6260cfac5a04e976eea2b8bf9386278b0a6344720796"
+      },
+      "local": {
+        "en": {
+          "dir": "ltr",
+          "lang": "en",
+          "h1": "Build. Invest. Partner. Acquire.",
+          "langButton": "العربية"
+        },
+        "ar": {
+          "dir": "rtl",
+          "lang": "ar",
+          "h1": "ابنِ. استثمر. شارك. استحوذ.",
+          "langButton": "English"
+        },
+        "errors": [],
+        "enSha256": "9f297a18f52b44664bf29050f6f3a535150da336f0404d7e21c2910c5cba0f72",
+        "arSha256": "4ccfe5fdbf46e4698f2e6260cfac5a04e976eea2b8bf9386278b0a6344720796"
+      }
+    },
+    "mobile": {
+      "live": {
+        "en": {
+          "dir": "ltr",
+          "lang": "en",
+          "h1": "Build. Invest. Partner. Acquire.",
+          "langButton": "العربية"
+        },
+        "ar": {
+          "dir": "rtl",
+          "lang": "ar",
+          "h1": "ابنِ. استثمر. شارك. استحوذ.",
+          "langButton": "English"
+        },
+        "errors": [],
+        "enSha256": "fb899e81644ce7f4cce35edbd55e18b825321ed6a17a953473dcb84eef9e1060",
+        "arSha256": "cecb043487e78a62379f0fc2ec6de59797925c1bc20d66797607a2a73bba9536"
+      },
+      "local": {
+        "en": {
+          "dir": "ltr",
+          "lang": "en",
+          "h1": "Build. Invest. Partner. Acquire.",
+          "langButton": "العربية"
+        },
+        "ar": {
+          "dir": "rtl",
+          "lang": "ar",
+          "h1": "ابنِ. استثمر. شارك. استحوذ.",
+          "langButton": "English"
+        },
+        "errors": [],
+        "enSha256": "fb899e81644ce7f4cce35edbd55e18b825321ed6a17a953473dcb84eef9e1060",
+        "arSha256": "cecb043487e78a62379f0fc2ec6de59797925c1bc20d66797607a2a73bba9536"
+      }
+    }
+  },
+  "checks": {
+    "desktopEnglishPixels": true,
+    "desktopArabicPixels": true,
+    "mobileEnglishPixels": true,
+    "mobileArabicPixels": true,
+    "localEnglishHero": true,
+    "liveEnglishHero": true,
+    "localArabicRTL": true,
+    "liveArabicRTL": true,
+    "localArabicHeroPresent": true,
+    "liveArabicHeroPresent": true,
+    "localConsoleClean": true,
+    "liveConsoleClean": true
+  }
+}
