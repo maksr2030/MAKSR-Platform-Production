@@ -11,10 +11,6 @@ on:
 permissions:
   contents: write
 
-env:
-  VERCEL_ORG_ID: team_KMM060bx6S1YZlqLGOqobs3R
-  VERCEL_PROJECT_ID: prj_1sedFBEUagKGu1VeBjrVs13By
-
 jobs:
   preview:
     runs-on: ubuntu-latest
@@ -50,6 +46,42 @@ jobs:
           echo "LOCAL_SHA=$LOCAL_SHA" >> "$GITHUB_ENV"
           test "$LIVE_SHA" = "$LOCAL_SHA"
 
+      - name: Discover and link exact Vercel project
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          rm -rf .vercel
+          npx --yes vercel@latest project ls --json --token="$VERCEL_TOKEN" > /tmp/vercel-projects.json
+          python3 - <<'PY'
+          import json, os, sys
+          data=json.load(open('/tmp/vercel-projects.json'))
+          projects=data.get('projects', data) if isinstance(data, dict) else data
+          if not isinstance(projects, list):
+              print('Unexpected Vercel project-list response shape.')
+              sys.exit(3)
+          safe=[{'name':p.get('name'),'id':p.get('id'),'accountId':p.get('accountId')} for p in projects]
+          print('Projects visible to token:', json.dumps(safe, separators=(',',':')))
+          matches=[p for p in projects if p.get('name') == 'maksr-mvp']
+          if len(matches) != 1:
+              print(f'Expected exactly one visible project named maksr-mvp; found {len(matches)}.')
+              sys.exit(4)
+          p=matches[0]
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              f.write(f"DISCOVERED_PROJECT_ID={p.get('id','')}\n")
+              f.write(f"DISCOVERED_ACCOUNT_ID={p.get('accountId','')}\n")
+          print('Target project discovered safely:', p.get('name'), p.get('id'))
+          PY
+          npx --yes vercel@latest link --yes --project=maksr-mvp --token="$VERCEL_TOKEN"
+          test -f .vercel/project.json
+          python3 - <<'PY'
+          import json, os
+          p=json.load(open('.vercel/project.json'))
+          assert p.get('projectId') == os.environ['DISCOVERED_PROJECT_ID'], (p.get('projectId'), os.environ['DISCOVERED_PROJECT_ID'])
+          print('Linked existing project identity verified:', p.get('projectId'), p.get('orgId'))
+          PY
+
       - name: Pull existing Vercel project settings for Preview
         shell: bash
         env:
@@ -57,16 +89,6 @@ jobs:
         run: |
           set -euo pipefail
           npx --yes vercel@latest pull --yes --environment=preview --token="$VERCEL_TOKEN"
-          test -f .vercel/project.json
-          python3 - <<'PY'
-          import json
-          p=json.load(open('.vercel/project.json'))
-          expected_org='team_KMM060bx6S1YZlqLGOqobs3R'
-          expected_project='prj_1sedFBEUagKGu1VeBjrVs13By'
-          assert p.get('orgId') == expected_org, f"Unexpected orgId: {p.get('orgId')}"
-          assert p.get('projectId') == expected_project, f"Unexpected projectId: {p.get('projectId')}"
-          print('Existing Vercel project identity verified.')
-          PY
 
       - name: Build Preview only
         shell: bash
@@ -109,6 +131,8 @@ jobs:
             echo '# MAKSR Vercel Preview Evidence'
             echo
             echo "- Preview URL: $PREVIEW_URL"
+            echo "- Vercel project ID: $DISCOVERED_PROJECT_ID"
+            echo "- Vercel account/team ID: $DISCOVERED_ACCOUNT_ID"
             echo "- Live source SHA-256: $LIVE_SHA"
             echo "- Recovered local SHA-256: $LOCAL_SHA"
             echo "- Preview response SHA-256: $PREVIEW_SHA"
