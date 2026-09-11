@@ -60,7 +60,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/maksr-parity.mjs <<'NODE'
+          cat > ./maksr-parity.mjs <<'NODE'
           import { chromium } from 'playwright';
           import fs from 'node:fs';
           import crypto from 'node:crypto';
@@ -185,7 +185,8 @@ jobs:
           ];
           if (!required.every(Boolean)) process.exit(2);
           NODE
-          node /tmp/maksr-parity.mjs
+          node ./maksr-parity.mjs
+          rm -f ./maksr-parity.mjs
 
       - name: Create screenshot SHA-256 manifest
         shell: bash
