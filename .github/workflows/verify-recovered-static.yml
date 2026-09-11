@@ -1,0 +1,74 @@
+name: Verify recovered MAKSR static source
+
+on:
+  push:
+    branches:
+      - source-recovery
+    paths:
+      - '.github/workflows/verify-recovered-static.yml'
+      - 'index.html'
+      - 'vercel.json'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout recovery branch
+        uses: actions/checkout@v4
+        with:
+          ref: source-recovery
+
+      - name: Verify recovered source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s index.html
+          test -s vercel.json
+          jq empty vercel.json
+          grep -Fq '<!doctype html>' index.html
+          grep -Fq '<style>' index.html
+          grep -Fq 'MAKSR' index.html
+          grep -Fq 'Build. Invest. Partner. Acquire.' index.html
+          grep -Fq 'MAKSR Transaction Intelligence' index.html
+          grep -Fq 'العربية' index.html
+          SCRIPT_STATUS='NOT_FOUND'
+          if grep -Fq '<script' index.html; then SCRIPT_STATUS='FOUND'; fi
+          SNAPSHOT_MATCH='NO'
+          if cmp -s index.html recovery/deployed-render-snapshot/canonical-apex.html; then SNAPSHOT_MATCH='YES'; fi
+          ROOT_SHA=$(sha256sum index.html | awk '{print $1}')
+          SNAP_SHA=$(sha256sum recovery/deployed-render-snapshot/canonical-apex.html | awk '{print $1}')
+          SIZE=$(wc -c < index.html | tr -d ' ')
+          {
+            echo '# MAKSR Recovered Static Source Verification'
+            echo
+            echo '- Recovery branch: source-recovery'
+            echo '- Root index.html bytes: '"$SIZE"
+            echo '- Root index.html SHA-256: '"$ROOT_SHA"
+            echo '- Canonical production snapshot SHA-256: '"$SNAP_SHA"
+            echo '- Byte-for-byte match with canonical production response: '"$SNAPSHOT_MATCH"
+            echo '- Embedded style block: FOUND'
+            echo '- Embedded script block: '"$SCRIPT_STATUS"
+            echo '- English hero marker: FOUND'
+            echo '- MAKSR Transaction Intelligence marker: FOUND'
+            echo '- Arabic language marker: FOUND'
+            echo '- vercel.json syntax: VALID'
+            echo
+            echo 'This verifies that the staged root index.html is byte-for-byte identical to the HTML fetched from https://maksr.com at recovery time. It does not by itself prove historical authoring provenance beyond the live production response and the Vercel Source-view evidence.'
+          } > recovery/RECOVERED_SOURCE_VERIFICATION.md
+
+      - name: Commit verification report
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add recovery/RECOVERED_SOURCE_VERIFICATION.md
+          if git diff --cached --quiet; then
+            echo 'No verification report changes to commit.'
+          else
+            git commit -m 'Verify recovered MAKSR static production candidate'
+            git push origin source-recovery
+          fi
