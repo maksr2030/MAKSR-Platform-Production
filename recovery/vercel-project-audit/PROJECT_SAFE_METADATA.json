@@ -1,0 +1,18 @@
+{
+  "accountId": "team_KMM060bx6S1YZlqLGOqobs3R",
+  "buildCommand": null,
+  "createdAt": 1788561077665,
+  "devCommand": null,
+  "framework": null,
+  "gitForkProtection": true,
+  "id": "prj_lsedFBEUagKGu1VeBjrVsl3Byhgv",
+  "installCommand": null,
+  "name": "maksr-mvp",
+  "nodeVersion": "24.x",
+  "outputDirectory": null,
+  "rootDirectory": null,
+  "ssoProtection": {
+    "deploymentType": "all_except_custom_domains"
+  },
+  "updatedAt": 1788566741740
+}

@@ -1,0 +1,42 @@
+[
+  {
+    "uid": "dpl_5KRnUzhDSFKLpoaEhmBrvQH6tGNp",
+    "name": "maksr-mvp",
+    "url": "maksr-3o8py7dio-maksr2030-6555s-projects.vercel.app",
+    "state": "READY",
+    "target": "production",
+    "created": 1788566739184,
+    "source": "redeploy",
+    "meta": {}
+  },
+  {
+    "uid": "dpl_CtL8yLeZCAqLioRiv2qet4UzUtMH",
+    "name": "maksr-mvp",
+    "url": "maksr-g2e48pedg-maksr2030-6555s-projects.vercel.app",
+    "state": "READY",
+    "target": null,
+    "created": 1788561509952,
+    "source": null,
+    "meta": {}
+  },
+  {
+    "uid": "dpl_4PoojxcEmr8RhhUSP1WcHbkqCm4V",
+    "name": "maksr-mvp",
+    "url": "maksr-gv81cbodc-maksr2030-6555s-projects.vercel.app",
+    "state": "READY",
+    "target": null,
+    "created": 1788561150736,
+    "source": null,
+    "meta": {}
+  },
+  {
+    "uid": "dpl_9oBt7jTNugc5sU9dRn7PVR7zPMjp",
+    "name": "maksr-mvp",
+    "url": "maksr-mka2m4qyh-maksr2030-6555s-projects.vercel.app",
+    "state": "READY",
+    "target": "production",
+    "created": 1788561077974,
+    "source": null,
+    "meta": {}
+  }
+]
