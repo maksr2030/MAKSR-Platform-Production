@@ -19,40 +19,59 @@ jobs:
         with:
           ref: source-recovery
 
-      - name: Fetch current production HTML without modifying production
+      - name: Fetch current live HTML without modifying production
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p recovery/deployed-render-snapshot
-          URL='https://maksr-3o8py7dio-maksr2030-6555s-projects.vercel.app/'
-          curl --fail --location --retry 3 --retry-delay 2 \
-            --user-agent 'Mozilla/5.0 MAKSR-Recovery/1.0' \
-            --dump-header recovery/deployed-render-snapshot/response-headers.txt \
-            "$URL" \
-            --output recovery/deployed-render-snapshot/index.html
 
-      - name: Validate recovered HTML
+          fetch_one() {
+            local url="$1"
+            local name="$2"
+            curl --fail --location --retry 3 --retry-delay 2 \
+              --user-agent 'Mozilla/5.0 MAKSR-Recovery/1.0' \
+              --dump-header "recovery/deployed-render-snapshot/${name}-headers.txt" \
+              --write-out '%{url_effective}\n%{http_code}\n%{size_download}\n' \
+              "$url" \
+              --output "recovery/deployed-render-snapshot/${name}.html" \
+              > "recovery/deployed-render-snapshot/${name}-fetch.txt" || true
+          }
+
+          fetch_one 'https://maksr-3o8py7dio-maksr2030-6555s-projects.vercel.app/' 'deployment-direct'
+          fetch_one 'https://www.maksr.com/' 'canonical-www'
+          fetch_one 'https://maksr.com/' 'canonical-apex'
+
+      - name: Classify fetched pages
         shell: bash
         run: |
           set -euo pipefail
-          test -s recovery/deployed-render-snapshot/index.html
-          grep -Fq 'MAKSR' recovery/deployed-render-snapshot/index.html
-          grep -Fq 'Build. Invest. Partner. Acquire.' recovery/deployed-render-snapshot/index.html
-          grep -Fq 'MAKSR Transaction Intelligence' recovery/deployed-render-snapshot/index.html
+          : > recovery/deployed-render-snapshot/CLASSIFICATION.txt
+          for f in recovery/deployed-render-snapshot/*.html; do
+            [ -s "$f" ] || continue
+            name=$(basename "$f")
+            if grep -Fq 'MAKSR' "$f" && grep -Fq 'Build. Invest. Partner. Acquire.' "$f"; then
+              echo "$name=MAKSR_MATCH" >> recovery/deployed-render-snapshot/CLASSIFICATION.txt
+            elif grep -Eiq 'vercel|authentication|login|sign in' "$f"; then
+              echo "$name=VERCEL_OR_AUTH_PAGE" >> recovery/deployed-render-snapshot/CLASSIFICATION.txt
+            else
+              echo "$name=UNKNOWN" >> recovery/deployed-render-snapshot/CLASSIFICATION.txt
+            fi
+          done
 
       - name: Create evidence and SHA-256 manifest
         shell: bash
         run: |
           set -euo pipefail
-          sha256sum recovery/deployed-render-snapshot/index.html > recovery/deployed-render-snapshot/SOURCE_MANIFEST_SHA256.txt
+          find recovery/deployed-render-snapshot -maxdepth 1 -type f -name '*.html' -print0 | sort -z | xargs -0 sha256sum > recovery/deployed-render-snapshot/SOURCE_MANIFEST_SHA256.txt || true
           {
             echo '# MAKSR Deployed Render Snapshot Evidence'
             echo
-            echo 'This directory is a preservation snapshot fetched from the current production deployment URL.'
-            echo 'It is not yet represented as the original authoring source until byte-for-byte/source-view verification is completed.'
+            echo 'This directory contains preservation snapshots fetched from the current public production endpoints.'
+            echo 'These files are not yet represented as the original authoring source until source-view verification is completed.'
             echo
             echo '- Vercel deployment short ID observed in dashboard: 5KRnUzhDS'
-            echo '- Deployment URL: https://maksr-3o8py7dio-maksr2030-6555s-projects.vercel.app/'
+            echo '- Direct deployment URL: https://maksr-3o8py7dio-maksr2030-6555s-projects.vercel.app/'
+            echo '- Canonical domain: https://maksr.com/'
             echo '- Environment observed in dashboard: Production / Current / Ready'
             echo '- Deployment source observed in dashboard: vercel deploy'
             echo '- Source file list observed in dashboard: index.html, vercel.json'
@@ -71,6 +90,6 @@ jobs:
           if git diff --cached --quiet; then
             echo 'No snapshot changes to commit.'
           else
-            git commit -m 'Preserve current MAKSR production render snapshot'
+            git commit -m 'Preserve current MAKSR live render snapshots'
             git push origin source-recovery
           fi
