@@ -1,0 +1,10 @@
+# Preserve production payload parity: only application source/config should deploy.
+.github/
+recovery/
+README.md
+PRODUCTION-GOVERNANCE.md
+SOURCE-RECOVERY.md
+node_modules/
+.env
+.env.*
+.DS_Store
