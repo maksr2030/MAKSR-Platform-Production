@@ -1,0 +1,76 @@
+name: Recover MAKSR live snapshot
+
+on:
+  push:
+    branches:
+      - source-recovery
+    paths:
+      - '.github/workflows/recover-live-snapshot.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout recovery branch
+        uses: actions/checkout@v4
+        with:
+          ref: source-recovery
+
+      - name: Fetch current production HTML without modifying production
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovery/deployed-render-snapshot
+          URL='https://maksr-3o8py7dio-maksr2030-6555s-projects.vercel.app/'
+          curl --fail --location --retry 3 --retry-delay 2 \
+            --user-agent 'Mozilla/5.0 MAKSR-Recovery/1.0' \
+            --dump-header recovery/deployed-render-snapshot/response-headers.txt \
+            "$URL" \
+            --output recovery/deployed-render-snapshot/index.html
+
+      - name: Validate recovered HTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s recovery/deployed-render-snapshot/index.html
+          grep -Fq 'MAKSR' recovery/deployed-render-snapshot/index.html
+          grep -Fq 'Build. Invest. Partner. Acquire.' recovery/deployed-render-snapshot/index.html
+          grep -Fq 'MAKSR Transaction Intelligence' recovery/deployed-render-snapshot/index.html
+
+      - name: Create evidence and SHA-256 manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum recovery/deployed-render-snapshot/index.html > recovery/deployed-render-snapshot/SOURCE_MANIFEST_SHA256.txt
+          {
+            echo '# MAKSR Deployed Render Snapshot Evidence'
+            echo
+            echo 'This directory is a preservation snapshot fetched from the current production deployment URL.'
+            echo 'It is not yet represented as the original authoring source until byte-for-byte/source-view verification is completed.'
+            echo
+            echo '- Vercel deployment short ID observed in dashboard: 5KRnUzhDS'
+            echo '- Deployment URL: https://maksr-3o8py7dio-maksr2030-6555s-projects.vercel.app/'
+            echo '- Environment observed in dashboard: Production / Current / Ready'
+            echo '- Deployment source observed in dashboard: vercel deploy'
+            echo '- Source file list observed in dashboard: index.html, vercel.json'
+            echo "- Recovery UTC timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo
+            echo 'Safety: no Vercel deployment, alias, DNS, or production setting is changed by this workflow.'
+          } > recovery/deployed-render-snapshot/RECOVERY_EVIDENCE.md
+
+      - name: Commit snapshot to source-recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add recovery/deployed-render-snapshot
+          if git diff --cached --quiet; then
+            echo 'No snapshot changes to commit.'
+          else
+            git commit -m 'Preserve current MAKSR production render snapshot'
+            git push origin source-recovery
+          fi
