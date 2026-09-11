@@ -1,0 +1,125 @@
+name: MAKSR Vercel read-only project audit
+
+on:
+  push:
+    branches:
+      - source-recovery
+    paths:
+      - '.github/workflows/vercel-readonly-project-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  VERCEL_TEAM_ID: team_KMM060bx6S1YZlqLGOqobs3R
+  VERCEL_PROJECT_NAME: maksr-mvp
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout recovery branch
+        uses: actions/checkout@v4
+        with:
+          ref: source-recovery
+
+      - name: Read exact project metadata from Vercel API
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${VERCEL_TOKEN:-}"
+          mkdir -p recovery/vercel-project-audit
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_NAME}?teamId=${VERCEL_TEAM_ID}" \
+            --output /tmp/project.json
+          python3 - <<'PY'
+          import json, pathlib, os
+          p=json.load(open('/tmp/project.json'))
+          safe_keys=[
+            'id','name','accountId','framework','rootDirectory','buildCommand',
+            'installCommand','devCommand','outputDirectory','nodeVersion','createdAt',
+            'updatedAt','link','gitForkProtection','ssoProtection','publicSource'
+          ]
+          safe={k:p.get(k) for k in safe_keys if k in p}
+          pathlib.Path('recovery/vercel-project-audit/PROJECT_SAFE_METADATA.json').write_text(
+            json.dumps(safe, indent=2, sort_keys=True), encoding='utf-8')
+          link=safe.get('link')
+          print('VERIFIED_PROJECT_ID=', safe.get('id'))
+          print('VERIFIED_PROJECT_NAME=', safe.get('name'))
+          print('VERIFIED_TEAM_ID=', safe.get('accountId'))
+          print('GIT_LINK_PRESENT=', bool(link))
+          if isinstance(link, dict):
+            print('GIT_LINK_TYPE=', link.get('type'))
+            print('GIT_LINK_REPO=', link.get('repo') or link.get('repoId') or link.get('org'))
+            print('GIT_LINK_PRODUCTION_BRANCH=', link.get('productionBranch'))
+          PY
+
+      - name: Read current deployments without changing anything
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          PROJECT_ID=$(python3 -c "import json; print(json.load(open('/tmp/project.json'))['id'])")
+          curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v6/deployments?projectId=${PROJECT_ID}&teamId=${VERCEL_TEAM_ID}&limit=20" \
+            --output /tmp/deployments.json
+          python3 - <<'PY'
+          import json, pathlib
+          d=json.load(open('/tmp/deployments.json'))
+          out=[]
+          for x in d.get('deployments',[]):
+            out.append({
+              'uid':x.get('uid'),
+              'name':x.get('name'),
+              'url':x.get('url'),
+              'state':x.get('state') or x.get('readyState'),
+              'target':x.get('target'),
+              'created':x.get('created') or x.get('createdAt'),
+              'source':x.get('source'),
+              'meta':{k:v for k,v in (x.get('meta') or {}).items() if k in ['githubCommitRef','githubCommitSha','githubRepo','githubOrg']}
+            })
+          pathlib.Path('recovery/vercel-project-audit/DEPLOYMENTS_SAFE_METADATA.json').write_text(
+            json.dumps(out, indent=2), encoding='utf-8')
+          print('DEPLOYMENT_COUNT=', len(out))
+          for x in out[:10]:
+            print('DEPLOYMENT=', x['uid'], x['target'], x['state'], x['url'])
+          PY
+
+      - name: Record read-only audit evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT_ID=$(python3 -c "import json; print(json.load(open('/tmp/project.json'))['id'])")
+          {
+            echo '# MAKSR Vercel Read-Only Project Audit'
+            echo
+            echo "- Project name: ${VERCEL_PROJECT_NAME}"
+            echo "- Project ID: ${PROJECT_ID}"
+            echo "- Team ID: ${VERCEL_TEAM_ID}"
+            echo '- Operation mode: read-only'
+            echo '- Production deployment created: NO'
+            echo '- Preview deployment created: NO'
+            echo '- Domain or alias changed: NO'
+            echo '- DNS changed: NO'
+            echo "- UTC timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          } > recovery/vercel-project-audit/README.md
+
+      - name: Commit safe audit evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add recovery/vercel-project-audit
+          if git diff --cached --quiet; then
+            echo 'No audit evidence changes to commit.'
+          else
+            git commit -m 'Record MAKSR Vercel read-only project audit'
+            git push origin source-recovery
+          fi
