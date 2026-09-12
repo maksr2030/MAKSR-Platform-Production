@@ -54,10 +54,10 @@ jobs:
           PGPASSWORD: postgres
         run: |
           set -euo pipefail
-          psql -h localhost -U postgres -d maksr -Atc "SELECT to_regclass('public.organizations') IS NOT NULL" | grep -Fx true
-          psql -h localhost -U postgres -d maksr -Atc "SELECT to_regclass('public.organization_memberships') IS NOT NULL" | grep -Fx true
-          psql -h localhost -U postgres -d maksr -Atc "SELECT to_regclass('public.roles') IS NOT NULL" | grep -Fx true
-          psql -h localhost -U postgres -d maksr -Atc "SELECT to_regclass('public.audit_events') IS NOT NULL" | grep -Fx true
+          psql -h localhost -U postgres -d maksr -Atc "SELECT to_regclass('public.organizations') IS NOT NULL" | grep -Fx t
+          psql -h localhost -U postgres -d maksr -Atc "SELECT to_regclass('public.organization_memberships') IS NOT NULL" | grep -Fx t
+          psql -h localhost -U postgres -d maksr -Atc "SELECT to_regclass('public.roles') IS NOT NULL" | grep -Fx t
+          psql -h localhost -U postgres -d maksr -Atc "SELECT to_regclass('public.audit_events') IS NOT NULL" | grep -Fx t
 
       - name: Verify row-level tenant isolation is enabled
         env:
@@ -69,7 +69,48 @@ jobs:
             test "$value" = "t"
           done
 
-      - name: Verify audit mutation protection exists
+      - name: Verify tenant isolation behavior with a non-owner runtime role
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          ORG_A=$(psql -h localhost -U postgres -d maksr -Atc "INSERT INTO organizations(legal_name,display_name) VALUES ('Tenant A','Tenant A') RETURNING organization_id")
+          ORG_B=$(psql -h localhost -U postgres -d maksr -Atc "INSERT INTO organizations(legal_name,display_name) VALUES ('Tenant B','Tenant B') RETURNING organization_id")
+          psql -h localhost -U postgres -d maksr -v ON_ERROR_STOP=1 -c "CREATE ROLE maksr_runtime NOLOGIN"
+          psql -h localhost -U postgres -d maksr -v ON_ERROR_STOP=1 -c "GRANT USAGE ON SCHEMA public TO maksr_runtime; GRANT SELECT ON organizations TO maksr_runtime"
+          visible=$(psql -h localhost -U postgres -d maksr -qAt <<SQL
+          SET ROLE maksr_runtime;
+          SET app.organization_id = '${ORG_A}';
+          SELECT count(*) FROM organizations;
+          SQL
+          )
+          test "$visible" = "1"
+          hidden=$(psql -h localhost -U postgres -d maksr -qAt <<SQL
+          SET ROLE maksr_runtime;
+          RESET app.organization_id;
+          SELECT count(*) FROM organizations;
+          SQL
+          )
+          test "$hidden" = "0"
+          test -n "$ORG_B"
+
+      - name: Verify audit append and mutation protection behavior
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          ORG=$(psql -h localhost -U postgres -d maksr -Atc "SELECT organization_id FROM organizations ORDER BY created_at LIMIT 1")
+          ACTOR=$(psql -h localhost -U postgres -d maksr -Atc "INSERT INTO identities(subject_type,display_name) VALUES ('PERSON','Foundation Test Actor') RETURNING identity_id")
+          EVENT=$(psql -h localhost -U postgres -d maksr -Atc "SELECT event_id FROM append_audit_event('${ORG}'::uuid,'${ACTOR}'::uuid,'FOUNDATION_TEST','ORGANIZATION','${ORG}',jsonb_build_object('source','github-actions'))")
+          test -n "$EVENT"
+          set +e
+          psql -h localhost -U postgres -d maksr -c "UPDATE audit_events SET action='TAMPER_ATTEMPT' WHERE event_id='${EVENT}'::uuid" >/tmp/audit-update.log 2>&1
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          grep -F "audit_events are immutable" /tmp/audit-update.log
+
+      - name: Verify audit mutation protection trigger exists
         env:
           PGPASSWORD: postgres
         run: |
