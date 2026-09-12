@@ -1,0 +1,78 @@
+name: MAKSR Wave 0 and Wave 1 Foundation Gate
+
+on:
+  push:
+    branches:
+      - wave0-wave1-sovereign-foundation
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  foundation-gate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: maksr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d maksr"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Run sovereign foundation tests
+        run: npm test
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Apply sovereign foundation database migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d maksr -v ON_ERROR_STOP=1 -f database/migrations/001_sovereign_foundation.sql
+
+      - name: Verify mandatory foundation objects
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d maksr -Atc "SELECT to_regclass('public.organizations') IS NOT NULL" | grep -Fx true
+          psql -h localhost -U postgres -d maksr -Atc "SELECT to_regclass('public.organization_memberships') IS NOT NULL" | grep -Fx true
+          psql -h localhost -U postgres -d maksr -Atc "SELECT to_regclass('public.roles') IS NOT NULL" | grep -Fx true
+          psql -h localhost -U postgres -d maksr -Atc "SELECT to_regclass('public.audit_events') IS NOT NULL" | grep -Fx true
+
+      - name: Verify row-level tenant isolation is enabled
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          for table in organizations organization_memberships roles membership_roles audit_events; do
+            value=$(psql -h localhost -U postgres -d maksr -Atc "SELECT relrowsecurity FROM pg_class WHERE oid='public.${table}'::regclass")
+            test "$value" = "t"
+          done
+
+      - name: Verify audit mutation protection exists
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          count=$(psql -h localhost -U postgres -d maksr -Atc "SELECT count(*) FROM pg_trigger WHERE tgname='audit_events_immutable_update' AND NOT tgisinternal")
+          test "$count" = "1"
