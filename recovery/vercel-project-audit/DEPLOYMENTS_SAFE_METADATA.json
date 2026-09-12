@@ -1,5 +1,35 @@
 [
   {
+    "uid": "dpl_3p5guY14SdQh4oCB3PLUKQEnap4E",
+    "name": "maksr-mvp",
+    "url": "maksr-a393f59ds-maksr2030-6555s-projects.vercel.app",
+    "state": "READY",
+    "target": "production",
+    "created": 1789172004228,
+    "source": "git",
+    "meta": {
+      "githubCommitRef": "main",
+      "githubCommitSha": "07b76e7f6cce71967803666d4f2da5fbcf3b43ab",
+      "githubOrg": "maksr2030",
+      "githubRepo": "MAKSR-Platform-Production"
+    }
+  },
+  {
+    "uid": "dpl_68PuZ2j13Xf6BWXaKT7agkLQBPRs",
+    "name": "maksr-mvp",
+    "url": "maksr-b73111cq9-maksr2030-6555s-projects.vercel.app",
+    "state": "READY",
+    "target": null,
+    "created": 1789171731349,
+    "source": "git",
+    "meta": {
+      "githubCommitRef": "source-recovery",
+      "githubCommitSha": "93aca2b757a0bb9fd3989aa05c2e4175b84417b0",
+      "githubOrg": "maksr2030",
+      "githubRepo": "MAKSR-Platform-Production"
+    }
+  },
+  {
     "uid": "dpl_5KRnUzhDSFKLpoaEhmBrvQH6tGNp",
     "name": "maksr-mvp",
     "url": "maksr-3o8py7dio-maksr2030-6555s-projects.vercel.app",
