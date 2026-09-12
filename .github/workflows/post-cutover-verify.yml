@@ -1,0 +1,134 @@
+name: MAKSR Post-Cutover Verification
+
+on:
+  push:
+    branches:
+      - source-recovery
+    paths:
+      - '.github/workflows/post-cutover-verify.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  VERCEL_TEAM_ID: team_KMM060bx6S1YZlqLGOqobs3R
+  VERCEL_PROJECT_ID: prj_lsedFBEUagKGu1VeBjrVsl3Byhgv
+  EXPECTED_PRODUCTION_COMMIT: 07b76e7f6cce71967803666d4f2da5fbcf3b43ab
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout recovery branch
+        uses: actions/checkout@v4
+        with:
+          ref: source-recovery
+
+      - name: Verify expected production deployment in Vercel
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${VERCEL_TOKEN:-}"
+          found=0
+          for i in $(seq 1 24); do
+            curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              "https://api.vercel.com/v6/deployments?projectId=${VERCEL_PROJECT_ID}&teamId=${VERCEL_TEAM_ID}&limit=20" \
+              -o /tmp/deployments.json
+            if python3 - <<'PY'
+          import json, os, sys
+          expected=os.environ['EXPECTED_PRODUCTION_COMMIT']
+          data=json.load(open('/tmp/deployments.json'))
+          for d in data.get('deployments', []):
+              meta=d.get('meta') or {}
+              if meta.get('githubCommitSha') == expected and d.get('target') == 'production' and (d.get('state') or d.get('readyState')) == 'READY':
+                  print('PRODUCTION_DEPLOYMENT_ID=', d.get('uid'))
+                  print('PRODUCTION_DEPLOYMENT_URL=', d.get('url'))
+                  open('/tmp/deployment-id.txt','w').write(str(d.get('uid') or ''))
+                  open('/tmp/deployment-url.txt','w').write(str(d.get('url') or ''))
+                  sys.exit(0)
+          sys.exit(1)
+          PY
+            then
+              found=1
+              break
+            fi
+            sleep 5
+          done
+          test "$found" -eq 1
+
+      - name: Verify live apex and www are byte-identical to Git source
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA=$(sha256sum index.html | awk '{print $1}')
+          matched=0
+          for i in $(seq 1 24); do
+            curl --fail --silent --show-error --location https://maksr.com -o /tmp/apex.html || true
+            curl --fail --silent --show-error --location https://www.maksr.com -o /tmp/www.html || true
+            if [ -s /tmp/apex.html ] && [ -s /tmp/www.html ]; then
+              APEX_SHA=$(sha256sum /tmp/apex.html | awk '{print $1}')
+              WWW_SHA=$(sha256sum /tmp/www.html | awk '{print $1}')
+              if [ "$SOURCE_SHA" = "$APEX_SHA" ] && [ "$SOURCE_SHA" = "$WWW_SHA" ]; then
+                matched=1
+                break
+              fi
+            fi
+            sleep 5
+          done
+          echo "SOURCE_SHA=$SOURCE_SHA" | tee /tmp/hashes.txt
+          echo "APEX_SHA=$(sha256sum /tmp/apex.html | awk '{print $1}')" | tee -a /tmp/hashes.txt
+          echo "WWW_SHA=$(sha256sum /tmp/www.html | awk '{print $1}')" | tee -a /tmp/hashes.txt
+          test "$matched" -eq 1
+          grep -Fq 'Build. Invest. Partner. Acquire.' /tmp/apex.html
+          grep -Fq 'العربية' /tmp/apex.html
+          grep -Fq 'MAKSR Transaction Intelligence' /tmp/apex.html
+
+      - name: Record cutover evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p recovery/post-cutover
+          DEPLOYMENT_ID=$(cat /tmp/deployment-id.txt)
+          DEPLOYMENT_URL=$(cat /tmp/deployment-url.txt)
+          SOURCE_SHA=$(grep '^SOURCE_SHA=' /tmp/hashes.txt | cut -d= -f2)
+          APEX_SHA=$(grep '^APEX_SHA=' /tmp/hashes.txt | cut -d= -f2)
+          WWW_SHA=$(grep '^WWW_SHA=' /tmp/hashes.txt | cut -d= -f2)
+          cat > recovery/post-cutover/POST_CUTOVER_REPORT.md <<EOF
+          # MAKSR Production Cutover Verification
+
+          - Production Git commit: ${EXPECTED_PRODUCTION_COMMIT}
+          - Vercel project ID: ${VERCEL_PROJECT_ID}
+          - Vercel team ID: ${VERCEL_TEAM_ID}
+          - Production deployment ID: ${DEPLOYMENT_ID}
+          - Production deployment URL: https://${DEPLOYMENT_URL}
+          - https://maksr.com SHA-256: ${APEX_SHA}
+          - https://www.maksr.com SHA-256: ${WWW_SHA}
+          - Git index.html SHA-256: ${SOURCE_SHA}
+          - Apex byte parity: PASS
+          - WWW byte parity: PASS
+          - English marker: PASS
+          - Arabic language control marker: PASS
+          - Transaction Intelligence marker: PASS
+          - DNS changed by this workflow: NO
+          - Token value recorded: NO
+          - UTC verified at: $(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          EOF
+          cp /tmp/hashes.txt recovery/post-cutover/SHA256.txt
+
+      - name: Commit verification evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add recovery/post-cutover
+          if git diff --cached --quiet; then
+            echo 'No verification evidence changes to commit.'
+          else
+            git commit -m 'Record MAKSR production cutover verification'
+            git push origin source-recovery
+          fi
