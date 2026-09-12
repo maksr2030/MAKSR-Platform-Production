@@ -74,8 +74,8 @@ jobs:
           PGPASSWORD: postgres
         run: |
           set -euo pipefail
-          ORG_A=$(psql -h localhost -U postgres -d maksr -Atc "INSERT INTO organizations(legal_name,display_name) VALUES ('Tenant A','Tenant A') RETURNING organization_id")
-          ORG_B=$(psql -h localhost -U postgres -d maksr -Atc "INSERT INTO organizations(legal_name,display_name) VALUES ('Tenant B','Tenant B') RETURNING organization_id")
+          ORG_A=$(psql -h localhost -U postgres -d maksr -qAtc "INSERT INTO organizations(legal_name,display_name) VALUES ('Tenant A','Tenant A') RETURNING organization_id")
+          ORG_B=$(psql -h localhost -U postgres -d maksr -qAtc "INSERT INTO organizations(legal_name,display_name) VALUES ('Tenant B','Tenant B') RETURNING organization_id")
           psql -h localhost -U postgres -d maksr -v ON_ERROR_STOP=1 -c "CREATE ROLE maksr_runtime NOLOGIN"
           psql -h localhost -U postgres -d maksr -v ON_ERROR_STOP=1 -c "GRANT USAGE ON SCHEMA public TO maksr_runtime; GRANT SELECT ON organizations TO maksr_runtime"
           visible=$(psql -h localhost -U postgres -d maksr -qAt <<SQL
@@ -100,7 +100,7 @@ jobs:
         run: |
           set -euo pipefail
           ORG=$(psql -h localhost -U postgres -d maksr -Atc "SELECT organization_id FROM organizations ORDER BY created_at LIMIT 1")
-          ACTOR=$(psql -h localhost -U postgres -d maksr -Atc "INSERT INTO identities(subject_type,display_name) VALUES ('PERSON','Foundation Test Actor') RETURNING identity_id")
+          ACTOR=$(psql -h localhost -U postgres -d maksr -qAtc "INSERT INTO identities(subject_type,display_name) VALUES ('PERSON','Foundation Test Actor') RETURNING identity_id")
           EVENT=$(psql -h localhost -U postgres -d maksr -Atc "SELECT event_id FROM append_audit_event('${ORG}'::uuid,'${ACTOR}'::uuid,'FOUNDATION_TEST','ORGANIZATION','${ORG}',jsonb_build_object('source','github-actions'))")
           test -n "$EVENT"
           set +e
