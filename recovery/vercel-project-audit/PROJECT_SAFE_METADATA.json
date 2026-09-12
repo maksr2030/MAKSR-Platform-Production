@@ -7,6 +7,18 @@
   "gitForkProtection": true,
   "id": "prj_lsedFBEUagKGu1VeBjrVsl3Byhgv",
   "installCommand": null,
+  "link": {
+    "createdAt": 1789171557729,
+    "deployHooks": [],
+    "gitCredentialId": "cred_48435589a70c31ea5a6799166fbd7f17c8128796",
+    "org": "maksr2030",
+    "productionBranch": "main",
+    "repo": "MAKSR-Platform-Production",
+    "repoId": 1357714670,
+    "repoOwnerId": 196441785,
+    "type": "github",
+    "updatedAt": 1789171557729
+  },
   "name": "maksr-mvp",
   "nodeVersion": "24.x",
   "outputDirectory": null,
@@ -14,5 +26,5 @@
   "ssoProtection": {
     "deploymentType": "all_except_custom_domains"
   },
-  "updatedAt": 1788566741740
+  "updatedAt": 1789171557884
 }
