@@ -1,6 +1,8 @@
 # MAKSR Runtime Production Layer
 
-This document defines the runtime completion package for the fixed features:
+This document defines the operational runtime boundary for the first sovereign foundation package.
+
+## Fixed features in scope
 
 - MKSR-F061 Sovereign Security Architecture
 - MKSR-F064 Tenant Isolation and Key Management foundation
@@ -8,26 +10,54 @@ This document defines the runtime completion package for the fixed features:
 - MKSR-F001 Identity and Institutional Account Management
 - MKSR-F002 Organization, Role, and Permission Management
 
-## Runtime controls implemented
+## Runtime boundary
 
-1. PostgreSQL operational connection pool with explicit Secure Sockets Layer mode.
-2. Tenant-bound database transactions using PostgreSQL row-level security context.
-3. Provider-neutral OpenID Connect discovery and JSON Web Token signature verification.
-4. OpenID Connect Authorization Code flow with Proof Key for Code Exchange.
-5. Encrypted, Hypertext Transfer Protocol-only secure session cookies.
-6. Unified Request Security Context binding identity, organization, membership, roles, and permissions.
-7. Database-backed role and permission evaluation that fails closed.
-8. Audited organization, membership, role, permission, and role-assignment mutations.
-9. Runtime health endpoint that reports configuration state without exposing secrets.
-10. Initial organization, member, and role administration interface.
+The runtime layer includes PostgreSQL connectivity through a provider adapter; tenant-bound database transactions; forced PostgreSQL row-level security; provider-neutral institutional OpenID Connect login; encrypted Secure and HttpOnly sessions; unified Request Security Context; database-backed authorization; audited organization, membership, role, permission, and role-assignment mutations; runtime health; bilingual sovereign administration; and controlled bootstrap.
+
+## Sovereign Preview database profile
+
+The selected Preview target is Google Cloud SQL for PostgreSQL in `me-central2` Dammam, Kingdom of Saudi Arabia.
+
+The infrastructure authentication path is:
+
+Vercel OpenID Connect federation → Google Cloud Workload Identity Federation → short-lived Google Cloud credentials → Cloud SQL Node.js Connector → Identity and Access Management database authentication → PostgreSQL.
+
+No Google Cloud service-account private key is required in the repository or as a long-lived Vercel secret.
+
+When `DATABASE_PROVIDER=gcp-cloud-sql`, the runtime enforces:
+
+- `CLOUD_SQL_EXPECTED_REGION=me-central2`
+- `DATABASE_RESIDENCY_COUNTRY=SA`
+- fail-closed behavior on region drift
+- fail-closed behavior on residency declaration drift
+- Cloud SQL instance project consistency with the configured Google Cloud project
+
+The institutional user OpenID Connect provider remains separate from infrastructure federation.
 
 ## Required Preview environment values
 
 No secret is stored in this repository.
 
-- DATABASE_URL
-- DATABASE_SSL_MODE: `verify-full`, `require`, or `disable` for local testing only
+### Database and residency
+
+- DATABASE_PROVIDER: `gcp-cloud-sql`
 - DATABASE_POOL_MAX: optional, default `5`
+- DATABASE_RESIDENCY_COUNTRY: `SA`
+- CLOUD_SQL_EXPECTED_REGION: `me-central2`
+- CLOUD_SQL_INSTANCE_CONNECTION_NAME
+- CLOUD_SQL_DATABASE
+- CLOUD_SQL_IAM_DATABASE_USER: optional when derived from service-account email
+
+### Google Cloud Workload Identity Federation
+
+- GCP_PROJECT_ID
+- GCP_PROJECT_NUMBER
+- GCP_SERVICE_ACCOUNT_EMAIL
+- GCP_WORKLOAD_IDENTITY_POOL_ID
+- GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID
+
+### Institutional OpenID Connect
+
 - OIDC_ISSUER
 - OIDC_AUDIENCE
 - OIDC_CLIENT_ID
@@ -38,28 +68,31 @@ No secret is stored in this repository.
 - SESSION_SECRET: minimum 32 characters
 - SESSION_MAX_AGE_SECONDS: optional, default `3600`
 
+## Separation rule
+
+Preview and Production must use separate database instances, Vercel environment bindings, service accounts, Workload Identity Federation subjects, institutional OpenID Connect client registrations, and session secrets.
+
 ## Promotion gate
 
-The branch must not be merged into `main` until:
+No merge to `main` is authorized until all of the following are evidenced on the real Preview environment:
 
-1. GitHub unit tests pass.
-2. PostgreSQL migration 001 and 002 apply cleanly to a fresh PostgreSQL 16 instance.
-3. Runtime database integration tests pass.
-4. Tenant row-level security behavior is tested with a non-owner runtime role.
-5. Audit update and delete attempts are rejected.
-6. Vercel Preview build succeeds.
-7. Preview homepage remains unchanged from the verified production baseline.
-8. Runtime health endpoint is checked.
-9. OpenID Connect provider configuration is completed in Preview.
-10. The administration interface is exercised through a real authenticated Preview session.
+1. A Dammam Cloud SQL for PostgreSQL instance exists.
+2. Vercel Preview successfully exchanges its OpenID Connect token through Google Cloud Workload Identity Federation.
+3. Cloud SQL Identity and Access Management database authentication succeeds without a stored Google Cloud service-account private key.
+4. Migrations 001 and 002 apply successfully to the real Preview database.
+5. `/api/v1/runtime/health` reports database READY with provider `gcp-cloud-sql`, region `me-central2`, and residency country `SA`.
+6. The first organization bootstrap completes through the controlled operator path.
+7. A real institutional OpenID Connect user session is completed.
+8. Organization, members, roles, and permissions are exercised through the administration interface.
+9. Cross-tenant access is denied on the real Preview database.
+10. Audit chain verification succeeds and UPDATE or DELETE mutation attempts are rejected.
+11. Homepage parity is reconfirmed against the verified Production baseline.
 
-Production remains unchanged until the final promotion gate is explicitly approved.
+Production remains unchanged until every gate is closed.
 
 ## One-time organization bootstrap
 
-The first institutional owner is not provisioned through an unauthenticated web endpoint. This is intentional.
-
-After the Preview PostgreSQL database and OpenID Connect provider are configured, run the controlled operator command:
+The first institutional owner is not provisioned through an unauthenticated web endpoint. After the Preview PostgreSQL database and institutional OpenID Connect provider are configured, run:
 
 `npm run bootstrap:organization`
 
