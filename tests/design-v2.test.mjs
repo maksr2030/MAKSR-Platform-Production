@@ -1,0 +1,88 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+const read = path => readFile(new URL("../" + path, import.meta.url), "utf8");
+const pages = ["index.html", "opportunities/index.html", "opportunities/preview/index.html", "acquire/index.html", "invest/index.html", "build-for-equity/index.html", "partnerships/index.html", "licensing/index.html", "technology-transfer/index.html", "list/index.html", "mandates/index.html", "trust/index.html", "intelligence/index.html", "how-it-works/index.html", "for-sellers/index.html", "for-buyers/index.html", "for-investors/index.html", "for-corporates/index.html", "for-advisors/index.html", "about/index.html", "help/index.html", "legal/index.html", "legal/terms/index.html", "legal/privacy/index.html", "legal/confidentiality/index.html", "legal/marketplace-rules/index.html", "legal/transaction-disclaimer/index.html", "legal/intellectual-property/index.html", "legal/data-processing/index.html", "exchange/index.html", "exchange/discover/index.html", "exchange/saved/index.html", "exchange/compare/index.html", "exchange/mandates/index.html", "exchange/deals/index.html", "exchange/messages/index.html", "exchange/data-rooms/index.html", "exchange/notifications/index.html", "exchange/organization/index.html"];
+
+test("design preview pages preserve bilingual and preview-only safeguards", async () => {
+  for (const path of pages) {
+    const html = await read(path);
+    assert.match(html, /<meta name="viewport"/i, path + " must define responsive viewport");
+    assert.match(html, /name="robots" content="noindex,nofollow"/i, path + " must remain excluded from indexing during preview");
+    assert.match(html, /data-en=/, path + " must include English localization markers");
+    assert.match(html, /data-ar=/, path + " must include Arabic localization markers");
+    assert.match(html, /design-v2\.css/, path + " must use the shared design system");
+    assert.match(html, /design-v2\.js/, path + " must use the shared interaction layer");
+  }
+});
+
+test("human-crafted design system avoids decorative AI visual tropes", async () => {
+  const css = await read("assets/design-v2.css");
+  assert.doesNotMatch(css, /linear-gradient|radial-gradient|conic-gradient/i, "gradients are intentionally excluded");
+  assert.doesNotMatch(css, /text-shadow\s*:/i, "glowing text is intentionally excluded");
+  assert.match(css, /prefers-reduced-motion/, "reduced motion support is required");
+  assert.match(css, /:focus-visible/, "visible keyboard focus is required");
+  assert.match(css, /overflow:auto/, "wide functional elements must scroll inside their own containers");
+});
+
+test("preview content does not fabricate transaction proof", async () => {
+  const combined = (await Promise.all(pages.map(read))).join("\n");
+  const forbiddenClaims = [
+    /success rate/i,
+    /transactions completed/i,
+    /investors onboarded/i,
+    /deal volume/i,
+    /trusted by/i
+  ];
+  for (const pattern of forbiddenClaims) assert.doesNotMatch(combined, pattern);
+  assert.match(combined, /fabricat|اختلاق/i);
+});
+
+test("opportunity evaluation labels illustrative values explicitly", async () => {
+  const detail = await read("opportunities/preview/index.html");
+  assert.match(detail, /Illustrative/);
+  assert.match(detail, /Design preview only/);
+  assert.match(detail, /contains no live listing, valuation, ownership or transaction data/i);
+});
+
+test("product architecture keeps production safety rule explicit", async () => {
+  const architecture = await read("docs/design-v2/PRODUCT-ARCHITECTURE.md");
+  assert.match(architecture, /Preview only/i);
+  assert.match(architecture, /Do not merge to main/i);
+  assert.match(architecture, /explicit owner approval/i);
+  for (const area of ["Public MAKSR","MAKSR Exchange","MAKSR Deal Workspace","MAKSR Sovereign Administration"]) {
+    assert.equal(architecture.includes(area), true, area + " must remain defined");
+  }
+});
+
+
+test("transaction path pages expose distinct institutional purposes", async () => {
+  const expected = {
+    "acquire/index.html": /Acquisition/,
+    "invest/index.html": /Investment/,
+    "build-for-equity/index.html": /Build for Equity/,
+    "partnerships/index.html": /Strategic Partnerships/,
+    "licensing/index.html": /Licensing/,
+    "technology-transfer/index.html": /Technology Transfer/
+  };
+  for (const [path, pattern] of Object.entries(expected)) {
+    const html = await read(path);
+    assert.match(html, pattern);
+    assert.match(html, /Added Value/);
+    assert.match(html, /noindex,nofollow/);
+  }
+});
+
+test("productization pages preserve controlled preview behavior", async()=>{const list=await read("list/index.html");assert.match(list,/does not transmit or store/i);assert.doesNotMatch(list,/<form[^>]+action=/i);const mandates=await read("mandates/index.html");assert.match(mandates,/does not create or store a mandate/i);const trust=await read("trust/index.html");assert.match(trust,/Trust should be inspectable/i);const intelligence=await read("intelligence/index.html");assert.match(intelligence,/Added Value/);assert.match(intelligence,/interface examples, not live transaction assessments/i)});
+
+test("audience legal and Exchange shells remain preview-safe", async () => {
+  assert.match(await read("how-it-works/index.html"), /Discovery does not equal disclosure/);
+  assert.match(await read("legal/index.html"), /not production legal terms/i);
+  for (const path of ["legal/terms/index.html","legal/privacy/index.html","legal/confidentiality/index.html","legal/marketplace-rules/index.html","legal/transaction-disclaimer/index.html","legal/intellectual-property/index.html","legal/data-processing/index.html"]) {
+    assert.match(await read(path), /Qualified legal review is required/i);
+  }
+  for (const path of ["exchange/index.html","exchange/discover/index.html","exchange/saved/index.html","exchange/compare/index.html","exchange/mandates/index.html","exchange/deals/index.html","exchange/messages/index.html","exchange/data-rooms/index.html","exchange/notifications/index.html","exchange/organization/index.html"]) {
+    const html=await read(path); assert.match(html,/Exchange Preview/); assert.match(html,/noindex,nofollow/);
+  }
+});
