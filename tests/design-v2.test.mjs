@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL("../" + path, import.meta.url), "utf8");
-const pages = ["index.html", "opportunities/index.html", "opportunities/preview/index.html"];
+const pages = ["index.html", "opportunities/index.html", "opportunities/preview/index.html", "acquire/index.html", "invest/index.html", "build-for-equity/index.html", "partnerships/index.html", "licensing/index.html", "technology-transfer/index.html"];
 
 test("design preview pages preserve bilingual and preview-only safeguards", async () => {
   for (const path of pages) {
@@ -53,5 +53,23 @@ test("product architecture keeps production safety rule explicit", async () => {
   assert.match(architecture, /explicit owner approval/i);
   for (const area of ["Public MAKSR","MAKSR Exchange","MAKSR Deal Workspace","MAKSR Sovereign Administration"]) {
     assert.equal(architecture.includes(area), true, area + " must remain defined");
+  }
+});
+
+
+test("transaction path pages expose distinct institutional purposes", async () => {
+  const expected = {
+    "acquire/index.html": /Acquisition/,
+    "invest/index.html": /Investment/,
+    "build-for-equity/index.html": /Build for Equity/,
+    "partnerships/index.html": /Strategic Partnerships/,
+    "licensing/index.html": /Licensing/,
+    "technology-transfer/index.html": /Technology Transfer/
+  };
+  for (const [path, pattern] of Object.entries(expected)) {
+    const html = await read(path);
+    assert.match(html, pattern);
+    assert.match(html, /Added Value/);
+    assert.match(html, /noindex,nofollow/);
   }
 });
