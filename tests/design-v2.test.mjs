@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL("../" + path, import.meta.url), "utf8");
-const pages = ["index.html", "opportunities/index.html", "opportunities/preview/index.html", "acquire/index.html", "invest/index.html", "build-for-equity/index.html", "partnerships/index.html", "licensing/index.html", "technology-transfer/index.html"];
+const pages = ["index.html", "opportunities/index.html", "opportunities/preview/index.html", "acquire/index.html", "invest/index.html", "build-for-equity/index.html", "partnerships/index.html", "licensing/index.html", "technology-transfer/index.html", "list/index.html", "mandates/index.html", "trust/index.html", "intelligence/index.html"];
 
 test("design preview pages preserve bilingual and preview-only safeguards", async () => {
   for (const path of pages) {
@@ -73,3 +73,5 @@ test("transaction path pages expose distinct institutional purposes", async () =
     assert.match(html, /noindex,nofollow/);
   }
 });
+
+test("productization pages preserve controlled preview behavior", async()=>{const list=await read("list/index.html");assert.match(list,/does not transmit or store/i);assert.doesNotMatch(list,/<form[^>]+action=/i);const mandates=await read("mandates/index.html");assert.match(mandates,/does not create or store a mandate/i);const trust=await read("trust/index.html");assert.match(trust,/Trust should be inspectable/i);const intelligence=await read("intelligence/index.html");assert.match(intelligence,/Added Value/);assert.match(intelligence,/interface examples, not live transaction assessments/i)});
