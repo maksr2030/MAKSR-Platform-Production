@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = path => readFile(new URL("../" + path, import.meta.url), "utf8");
-const pages = ["index.html", "opportunities/index.html", "opportunities/preview/index.html", "acquire/index.html", "invest/index.html", "build-for-equity/index.html", "partnerships/index.html", "licensing/index.html", "technology-transfer/index.html", "list/index.html", "mandates/index.html", "trust/index.html", "intelligence/index.html"];
+const pages = ["index.html", "opportunities/index.html", "opportunities/preview/index.html", "acquire/index.html", "invest/index.html", "build-for-equity/index.html", "partnerships/index.html", "licensing/index.html", "technology-transfer/index.html", "list/index.html", "mandates/index.html", "trust/index.html", "intelligence/index.html", "how-it-works/index.html", "for-sellers/index.html", "for-buyers/index.html", "for-investors/index.html", "for-corporates/index.html", "for-advisors/index.html", "about/index.html", "help/index.html", "legal/index.html", "legal/terms/index.html", "legal/privacy/index.html", "legal/confidentiality/index.html", "legal/marketplace-rules/index.html", "legal/transaction-disclaimer/index.html", "legal/intellectual-property/index.html", "legal/data-processing/index.html", "exchange/index.html", "exchange/discover/index.html", "exchange/saved/index.html", "exchange/compare/index.html", "exchange/mandates/index.html", "exchange/deals/index.html", "exchange/messages/index.html", "exchange/data-rooms/index.html", "exchange/notifications/index.html", "exchange/organization/index.html"];
 
 test("design preview pages preserve bilingual and preview-only safeguards", async () => {
   for (const path of pages) {
@@ -75,3 +75,14 @@ test("transaction path pages expose distinct institutional purposes", async () =
 });
 
 test("productization pages preserve controlled preview behavior", async()=>{const list=await read("list/index.html");assert.match(list,/does not transmit or store/i);assert.doesNotMatch(list,/<form[^>]+action=/i);const mandates=await read("mandates/index.html");assert.match(mandates,/does not create or store a mandate/i);const trust=await read("trust/index.html");assert.match(trust,/Trust should be inspectable/i);const intelligence=await read("intelligence/index.html");assert.match(intelligence,/Added Value/);assert.match(intelligence,/interface examples, not live transaction assessments/i)});
+
+test("audience legal and Exchange shells remain preview-safe", async () => {
+  assert.match(await read("how-it-works/index.html"), /Discovery does not equal disclosure/);
+  assert.match(await read("legal/index.html"), /not production legal terms/i);
+  for (const path of ["legal/terms/index.html","legal/privacy/index.html","legal/confidentiality/index.html","legal/marketplace-rules/index.html","legal/transaction-disclaimer/index.html","legal/intellectual-property/index.html","legal/data-processing/index.html"]) {
+    assert.match(await read(path), /Qualified legal review is required/i);
+  }
+  for (const path of ["exchange/index.html","exchange/discover/index.html","exchange/saved/index.html","exchange/compare/index.html","exchange/mandates/index.html","exchange/deals/index.html","exchange/messages/index.html","exchange/data-rooms/index.html","exchange/notifications/index.html","exchange/organization/index.html"]) {
+    const html=await read(path); assert.match(html,/Exchange Preview/); assert.match(html,/noindex,nofollow/);
+  }
+});
