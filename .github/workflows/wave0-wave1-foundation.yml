@@ -1,0 +1,133 @@
+name: MAKSR Wave 0 and Wave 1 Foundation Gate
+
+on:
+  push:
+    branches:
+      - wave0-wave1-sovereign-foundation
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  foundation-gate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: maksr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d maksr"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install runtime dependencies
+        run: npm install --ignore-scripts --audit=false --fund=false
+
+      - name: Run sovereign foundation and runtime unit tests
+        run: npm test
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Apply sovereign foundation database migrations
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d maksr -v ON_ERROR_STOP=1 -f database/migrations/001_sovereign_foundation.sql
+          psql -h localhost -U postgres -d maksr -v ON_ERROR_STOP=1 -f database/migrations/002_runtime_production_layer.sql
+
+      - name: Verify mandatory runtime objects
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          for table in organizations identities identity_authenticators organization_memberships roles permissions role_permissions membership_roles audit_events; do
+            psql -h localhost -U postgres -d maksr -Atc "SELECT to_regclass('public.${table}') IS NOT NULL" | grep -Fx t
+          done
+          psql -h localhost -U postgres -d maksr -Atc "SELECT to_regprocedure('public.verify_maksr_audit_chain(uuid)') IS NOT NULL" | grep -Fx t
+
+      - name: Verify row-level tenant isolation is enabled and forced
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          for table in organizations organization_memberships roles role_permissions membership_roles audit_events; do
+            state=$(psql -h localhost -U postgres -d maksr -Atc "SELECT relrowsecurity::text || ':' || relforcerowsecurity::text FROM pg_class WHERE oid='public.${table}'::regclass")
+            test "$state" = "true:true"
+          done
+
+      - name: Verify tenant isolation behavior with a non-owner runtime role
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          ORG_A=$(psql -h localhost -U postgres -d maksr -qAtc "INSERT INTO organizations(legal_name,display_name) VALUES ('Tenant A','Tenant A') RETURNING organization_id" | head -n1)
+          ORG_B=$(psql -h localhost -U postgres -d maksr -qAtc "INSERT INTO organizations(legal_name,display_name) VALUES ('Tenant B','Tenant B') RETURNING organization_id" | head -n1)
+          psql -h localhost -U postgres -d maksr -v ON_ERROR_STOP=1 -c "CREATE ROLE maksr_runtime NOLOGIN"
+          psql -h localhost -U postgres -d maksr -v ON_ERROR_STOP=1 -c "GRANT USAGE ON SCHEMA public TO maksr_runtime; GRANT SELECT ON organizations TO maksr_runtime"
+          visible=$(psql -h localhost -U postgres -d maksr -qAt <<SQL
+          SET ROLE maksr_runtime;
+          SET app.organization_id = '${ORG_A}';
+          SELECT count(*) FROM organizations;
+          SQL
+          )
+          test "$visible" = "1"
+          hidden=$(psql -h localhost -U postgres -d maksr -qAt <<SQL
+          SET ROLE maksr_runtime;
+          RESET app.organization_id;
+          SELECT count(*) FROM organizations;
+          SQL
+          )
+          test "$hidden" = "0"
+          test -n "$ORG_B"
+
+      - name: Run PostgreSQL runtime integration tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/maksr
+          DATABASE_SSL_MODE: disable
+        run: npm run test:integration
+
+      - name: Verify audit append, chain validation, and mutation protection
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          ORG=$(psql -h localhost -U postgres -d maksr -Atc "SELECT organization_id FROM organizations ORDER BY created_at LIMIT 1")
+          ACTOR=$(psql -h localhost -U postgres -d maksr -qAtc "INSERT INTO identities(subject_type,display_name) VALUES ('PERSON','Foundation Test Actor') RETURNING identity_id" | head -n1)
+          EVENT=$(psql -h localhost -U postgres -d maksr -qAtc "SELECT event_id FROM append_audit_event('${ORG}'::uuid,'${ACTOR}'::uuid,'FOUNDATION_TEST','ORGANIZATION','${ORG}',jsonb_build_object('source','github-actions'))" | head -n1)
+          test -n "$EVENT"
+          valid=$(psql -h localhost -U postgres -d maksr -Atc "SELECT is_valid FROM verify_maksr_audit_chain('${ORG}'::uuid)")
+          test "$valid" = "t"
+          set +e
+          psql -h localhost -U postgres -d maksr -c "UPDATE audit_events SET action='TAMPER_ATTEMPT' WHERE event_id='${EVENT}'::uuid" >/tmp/audit-update.log 2>&1
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          grep -F "audit_events are immutable" /tmp/audit-update.log
+
+      - name: Verify audit mutation protection trigger exists
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          count=$(psql -h localhost -U postgres -d maksr -Atc "SELECT count(*) FROM pg_trigger WHERE tgname='audit_events_immutable_update' AND NOT tgisinternal")
+          test "$count" = "1"

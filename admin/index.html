@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>MAKSR Sovereign Administration</title>
+  <style>
+    :root{color-scheme:dark;--bg:#07090d;--panel:#0d1118;--line:#242b36;--text:#f5f7fb;--muted:#9ca8b8;--accent:#d8bf74;--good:#7ed7a8;--danger:#ff9696}
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at top right,#152035 0,#07090d 46%);color:var(--text);font-family:Inter,Arial,sans-serif;min-height:100vh}
+    button,input{font:inherit}
+    .shell{max-width:1180px;margin:auto;padding:18px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 0;border-bottom:1px solid var(--line)}
+    .brand{font-size:28px;font-weight:800;letter-spacing:.08em}.brand span{color:var(--accent)}
+    .actions{display:flex;gap:8px;flex-wrap:wrap}
+    button{background:#111826;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:10px 14px;cursor:pointer}
+    button.primary{background:var(--accent);color:#111;border-color:var(--accent);font-weight:800}
+    .hero{padding:36px 0 20px}.hero h1{font-size:34px;margin:0 0 10px}.hero p{color:var(--muted);max-width:850px;line-height:1.7}
+    .status{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:20px 0}
+    .card{background:rgba(13,17,24,.92);border:1px solid var(--line);border-radius:18px;padding:18px}
+    .label{color:var(--muted);font-size:13px;text-transform:uppercase;letter-spacing:.08em}.value{font-size:18px;font-weight:700;margin-top:6px}
+    .session{display:grid;grid-template-columns:1fr auto;gap:10px;margin:18px 0}
+    input{width:100%;background:#090d14;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px}
+    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:26px 0 12px}.tabs button.active{border-color:var(--accent);color:var(--accent)}
+    .panel{display:none}.panel.active{display:block}
+    table{width:100%;border-collapse:collapse}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:16px;background:var(--panel)}
+    th,td{padding:12px 14px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{color:var(--accent);font-size:13px}
+    .notice{padding:14px 16px;border:1px solid var(--line);border-radius:14px;color:var(--muted);margin:14px 0}
+    .error{color:var(--danger)}.good{color:var(--good)}
+    [dir=rtl] th,[dir=rtl] td{text-align:right}
+    @media(max-width:760px){.status{grid-template-columns:1fr}.session{grid-template-columns:1fr}.hero h1{font-size:28px}}
+  </style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="brand">MAKSR <span>SOVEREIGN ADMIN</span></div>
+    <div class="actions">
+      <button id="lang">العربية</button>
+      <button id="logout">Sign out</button>
+    </div>
+  </header>
+
+  <section class="hero">
+    <h1 data-en="Institutional Administration" data-ar="الإدارة المؤسسية">Institutional Administration</h1>
+    <p data-en="Secure administration for the organization, members, roles and permissions. The interface is backed by tenant isolation, OpenID Connect identity verification, database permissions and tamper-evident audit evidence."
+       data-ar="إدارة آمنة للمؤسسة والمستخدمين والأدوار والصلاحيات، مدعومة بعزل الجهات والتحقق من الهوية عبر OpenID Connect والصلاحيات المرتبطة بقاعدة البيانات وسجل تدقيق مقاوم للعبث.">
+       Secure administration for the organization, members, roles and permissions. The interface is backed by tenant isolation, OpenID Connect identity verification, database permissions and tamper-evident audit evidence.
+    </p>
+  </section>
+
+  <div class="status">
+    <div class="card"><div class="label">Runtime</div><div class="value" id="runtimeStatus">Checking…</div></div>
+    <div class="card"><div class="label">Identity</div><div class="value" id="identityStatus">Not signed in</div></div>
+    <div class="card"><div class="label">Organization</div><div class="value" id="organizationStatus">Not selected</div></div>
+  </div>
+
+  <div class="session">
+    <input id="organizationId" autocomplete="off" placeholder="MAKSR Organization ID">
+    <button class="primary" id="connect" data-en="Sign in / Connect" data-ar="تسجيل الدخول / الاتصال">Sign in / Connect</button>
+  </div>
+
+  <div id="notice" class="notice">Enter the organization identifier supplied during onboarding, then sign in through the configured institutional identity provider.</div>
+
+  <div class="tabs">
+    <button data-tab="organization" class="active" data-en="Organization" data-ar="المؤسسة">Organization</button>
+    <button data-tab="members" data-en="Members" data-ar="المستخدمون">Members</button>
+    <button data-tab="roles" data-en="Roles & Permissions" data-ar="الأدوار والصلاحيات">Roles & Permissions</button>
+  </div>
+
+  <section id="organization" class="panel active">
+    <div class="table-wrap"><table><tbody id="organizationBody"></tbody></table></div>
+  </section>
+
+  <section id="members" class="panel">
+    <div class="table-wrap"><table>
+      <thead><tr><th>Member</th><th>Status</th><th>Roles</th></tr></thead>
+      <tbody id="membersBody"></tbody>
+    </table></div>
+  </section>
+
+  <section id="roles" class="panel">
+    <div class="table-wrap"><table>
+      <thead><tr><th>Role</th><th>Display Name</th><th>Permissions</th></tr></thead>
+      <tbody id="rolesBody"></tbody>
+    </table></div>
+  </section>
+</div>
+
+<script type="module">
+const state={lang:'en',organizationId:sessionStorage.getItem('maksr.organizationId')||''};
+const $=id=>document.getElementById(id);
+$('organizationId').value=state.organizationId;
+
+function t(){
+  document.documentElement.lang=state.lang;
+  document.documentElement.dir=state.lang==='ar'?'rtl':'ltr';
+  document.querySelectorAll('[data-en]').forEach(el=>{el.textContent=el.dataset[state.lang]});
+  $('lang').textContent=state.lang==='en'?'العربية':'English';
+}
+$('lang').onclick=()=>{state.lang=state.lang==='en'?'ar':'en';t()};
+
+async function api(path,options={}){
+  const headers={...(options.headers||{})};
+  if(state.organizationId) headers['x-maksr-organization-id']=state.organizationId;
+  const response=await fetch(path,{...options,headers,credentials:'same-origin'});
+  const body=await response.json().catch(()=>({}));
+  if(!response.ok) throw Object.assign(new Error(body.message||body.error||'Request failed'),{status:response.status,body});
+  return body;
+}
+
+async function runtime(){
+  try{
+    const data=await api('/api/v1/runtime/health');
+    $('runtimeStatus').textContent=data.status;
+    $('runtimeStatus').className='value '+(data.status==='READY'?'good':'');
+    return data;
+  }catch(error){
+    $('runtimeStatus').textContent='Unavailable';
+    $('runtimeStatus').className='value error';
+  }
+}
+
+async function loadContext(){
+  if(!state.organizationId) return false;
+  try{
+    const data=await api('/api/v1/session/context');
+    $('identityStatus').textContent=data.identity.displayName;
+    $('organizationStatus').textContent=data.organization.displayName;
+    $('notice').textContent=`Authenticated with ${data.roles.length} role(s) and ${data.permissions.length} permission(s).`;
+    return true;
+  }catch(error){
+    if(error.status===401){
+      const returnTo=`/admin/?organization_id=${encodeURIComponent(state.organizationId)}`;
+      location.href=`/api/v1/auth/login?return_to=${encodeURIComponent(returnTo)}`;
+      return false;
+    }
+    $('notice').textContent=error.message;
+    $('notice').classList.add('error');
+    return false;
+  }
+}
+
+async function loadData(){
+  if(!(await loadContext())) return;
+  const [org,members,roles]=await Promise.all([
+    api('/api/v1/admin/organization'),
+    api('/api/v1/admin/members'),
+    api('/api/v1/admin/roles')
+  ]);
+  const o=org.organization;
+  $('organizationBody').innerHTML=[
+    ['Legal Name',o.legal_name],['Display Name',o.display_name],['Status',o.status],['Organization ID',o.organization_id]
+  ].map(([k,v])=>`<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v??'')}</td></tr>`).join('');
+  $('membersBody').innerHTML=members.members.map(m=>`<tr><td>${escapeHtml(m.display_name)}</td><td>${escapeHtml(m.membership_status)}</td><td>${escapeHtml((m.roles||[]).map(r=>r.roleKey).join(', '))}</td></tr>`).join('');
+  $('rolesBody').innerHTML=roles.roles.map(r=>`<tr><td>${escapeHtml(r.role_key)}</td><td>${escapeHtml(r.display_name)}</td><td>${escapeHtml((r.permissions||[]).join(', '))}</td></tr>`).join('');
+}
+
+function escapeHtml(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
+$('connect').onclick=async()=>{
+  const id=$('organizationId').value.trim();
+  if(!/^[0-9a-f-]{36}$/i.test(id)){ $('notice').textContent='Enter a valid organization identifier.'; return; }
+  state.organizationId=id;sessionStorage.setItem('maksr.organizationId',id);await loadData();
+};
+$('logout').onclick=async()=>{await fetch('/api/v1/auth/logout',{method:'POST',credentials:'same-origin'});location.reload()};
+document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=()=>{
+  document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b===button));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===button.dataset.tab));
+});
+
+const qs=new URLSearchParams(location.search);
+if(qs.get('organization_id')){state.organizationId=qs.get('organization_id');sessionStorage.setItem('maksr.organizationId',state.organizationId);$('organizationId').value=state.organizationId;history.replaceState({},'',location.pathname)}
+t();await runtime();if(state.organizationId) await loadData();
+</script>
+</body>
+</html>

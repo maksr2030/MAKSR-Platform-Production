@@ -1,0 +1,21 @@
+{
+  "name": "maksr-sovereign-foundation",
+  "private": true,
+  "version": "0.3.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "test:integration": "node --test tests/*.integration.mjs",
+    "verify": "npm test",
+    "bootstrap:organization": "node scripts/bootstrap-organization.mjs"
+  },
+  "dependencies": {
+    "@google-cloud/cloud-sql-connector": "1.11.3",
+    "@vercel/oidc": "3.8.7",
+    "google-auth-library": "11.0.2",
+    "pg": "8.23.0"
+  }
+}
